@@ -1,0 +1,648 @@
+---
+title: "bellabeat_case_study"
+author: "Joree Weatherly"
+date: "2025-11-03"
+output: html_document
+---
+
+### Install Packages
+
+Before starting the analysis, we install a few essential R packages that provide the foundation for data cleaning, wrangling, and visualization throughout this project.  
+
+- **tidyverse** – a core collection of R packages (including *dplyr*, *ggplot2*, and *readr*) used for data manipulation, visualization, and analysis.  
+- **janitor** – simplifies data cleaning tasks, such as renaming columns, removing duplicates, and handling messy data.  
+- **skimr** – quickly summarizes datasets to help understand variable types, missing values, and distributions.  
+
+These packages create the groundwork for efficient and reproducible analysis in this notebook.
+
+*With the necessary packages installed, the R environment is now ready to load, explore, and analyze Fitbit activity and sleep data for the Bellabeat case study.*
+
+### Load Packages
+
+Now that all necessary packages are installed, we load them into the R environment to prepare for data cleaning, manipulation, and visualization.  
+
+- **tidyverse** – core toolkit for data wrangling, analysis, and visualization.  
+- **janitor** – streamlines data cleaning tasks and column formatting.  
+- **lubridate** – simplifies working with date and time data.  
+- **skimr** – provides quick and informative summaries of data frames.  
+
+```{r load_packages, echo=TRUE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(skimr)
+```
+
+
+*With the core libraries loaded, the environment is now ready to import, explore, and analyze Fitbit activity and sleep data for the Bellabeat case study.*
+
+### Import Data
+
+With the environment prepared, the next step is to import the Fitbit datasets into R for analysis and to clean the column names.
+Each dataset includes activity and intensity metrics recorded across multiple users and time periods.  
+Files are separated into two groups *A_to_M* and *M_to_A* which will later be merged for full coverage.  
+
+These datasets include:  
+- **dailyActivity** – daily totals for steps, distance, and calories burned.  
+- **hourlyCalories** – hourly calorie expenditure.  
+- **hourlyIntensities** – hourly total and average activity intensity.  
+- **hourlySteps** – hourly step counts.  
+
+```{r import_data, echo=TRUE}
+dailyActivity_A_to_M <- read_csv("dailyActivity_A_to_M.csv") %>%  clean_names()
+
+dailyActivity_M_to_A <- read_csv("dailyActivity_M_to_A.csv") %>%  clean_names()
+
+hourlyCalories_A_to_M <- read_csv("hourlyCalories_A_to_M.csv") %>%  clean_names()
+
+hourlyCalories_M_to_A <- read_csv("hourlyCalories_M_to_A.csv") %>%  clean_names()
+
+hourlyIntensities_A_to_M <- read_csv("hourlyIntensities_A_to_M.csv") %>%  clean_names()
+
+hourlyIntensities_M_to_A <- read_csv("hourlyIntensities_M_to_A.csv") %>%  clean_names()
+
+hourlySteps_A_to_M <- read_csv("hourlySteps_A_to_M.csv") %>%  clean_names()
+
+hourlySteps_M_to_A <- read_csv("hourlySteps_M_to_A.csv") %>%  clean_names()
+```
+
+
+*All Fitbit data files have been successfully imported and column names cleaned. The next step will clean and combine these tables to create unified datasets for daily and hourly analysis.*
+
+
+### Fix Hourly DATETIME
+
+The Fitbit hourly datasets record time in a U.S. date format (`M/d/yyyy H:mm:ss AM/PM`).  
+Before analysis, these timestamps need to be converted into a standardized datetime format so that R recognizes them as proper date-time objects.  
+
+Using `mdy_hms()` from the *lubridate* package, each dataset’s `activity_hour` column is parsed and transformed for consistent time-based analysis.
+
+```{r fix_hourly_datetime, echo=TRUE}
+parse_fitbit_hour <- function(df) {
+df %>%
+mutate(
+activity_hour = mdy_hms(as.character(activity_hour), tz = "UTC")
+)
+}
+
+hourlyCalories_A_to_M <- parse_fitbit_hour(hourlyCalories_A_to_M)
+hourlyCalories_M_to_A <- parse_fitbit_hour(hourlyCalories_M_to_A)
+hourlyIntensities_A_to_M <- parse_fitbit_hour(hourlyIntensities_A_to_M)
+hourlyIntensities_M_to_A <- parse_fitbit_hour(hourlyIntensities_M_to_A)
+hourlySteps_A_to_M <- parse_fitbit_hour(hourlySteps_A_to_M)
+hourlySteps_M_to_A <- parse_fitbit_hour(hourlySteps_M_to_A)
+
+dailyActivity_A_to_M <- dailyActivity_A_to_M %>%
+  mutate(activity_date = mdy(activity_date))
+dailyActivity_M_to_A <- dailyActivity_M_to_A %>%
+  mutate(activity_date = mdy(activity_date))
+
+```
+
+
+*All hourly timestamps have been standardized, ensuring accurate time-based comparisons and aggregation in later analyses.*
+
+### Confirm column types were parsed correctly
+
+After importing and cleaning the datasets, it’s important to confirm that all column types were parsed correctly.  
+Using the `str()` function, each dataset’s structure was inspected to verify that:  
+- Numeric fields (e.g., *steps*, *calories*, *distances*) were correctly recognized as **dbl (numeric)**.  
+- Date and time fields (e.g., *activity_date*, *activity_hour*) were properly recognized **POSIXct**. This ensures the hourly tables can be merged and summarized without additional type fixes.
+- All tables have consistent column types between the A_to_M and M_to_A datasets, ensuring they can be merged cleanly later.  
+
+```{r confirm_parsing, echo=TRUE}
+str(dailyActivity_A_to_M)
+str(dailyActivity_M_to_A)
+str(hourlyCalories_A_to_M)
+str(hourlyCalories_M_to_A)
+str(hourlyIntensities_A_to_M)
+str(hourlyIntensities_M_to_A)
+str(hourlySteps_A_to_M)
+str(hourlySteps_M_to_A)
+```
+
+
+*All column types were confirmed to be parsed correctly. Dates and times are consistently formatted, and numeric fields are consistent across all datasets and are now ready for merging and transformation.*
+
+### Confirm unique user count and record ranges
+
+Before merging datasets, it’s essential to validate that each file contains the expected number of unique users and consistent date or datetime ranges.  
+Using `summarise()` and `n_distinct()`, this step confirms data completeness and ensures that user IDs and time spans align between A-to-M and M-to-A datasets.
+
+```{r confirm_user_count_and_date_range, echo=TRUE}
+dailyActivity_A_to_M %>%
+  summarise(unique_users = n_distinct(id),
+            date_range = paste(min(activity_date), "to", max(activity_date)))
+
+dailyActivity_M_to_A %>%
+  summarise(unique_users = n_distinct(id),
+            date_range = paste(min(activity_date), "to", max(activity_date)))
+
+hourlyCalories_A_to_M %>%
+  summarise(unique_users = n_distinct(id),
+            datetime_range = paste(min(activity_hour), "to", max(activity_hour)))
+
+hourlyCalories_M_to_A %>%
+  summarise(unique_users = n_distinct(id),
+            datetime_range = paste(min(activity_hour), "to", max(activity_hour)))
+
+hourlyIntensities_A_to_M %>%
+  summarise(unique_users = n_distinct(id),
+            datetime_range = paste(min(activity_hour), "to", max(activity_hour)))
+
+hourlyIntensities_M_to_A %>%
+  summarise(unique_users = n_distinct(id),
+            datetime_range = paste(min(activity_hour), "to", max(activity_hour)))
+
+hourlySteps_A_to_M %>%
+  summarise(unique_users = n_distinct(id),
+            datetime_range = paste(min(activity_hour), "to", max(activity_hour)))
+
+hourlySteps_M_to_A %>%
+  summarise(unique_users = n_distinct(id),
+            datetime_range = paste(min(activity_hour), "to", max(activity_hour)))
+```
+
+
+*Results confirm user counts and time ranges are consistent across A-to-M and M-to-A datasets. Data spans from mid-March to mid-May 2016, ready for merging and aggregation in the next phase.*
+
+### Merge Tables
+
+After validating and cleaning all datasets, the A-to-M and M-to-A files are combined into unified data frames.  
+This step uses `bind_rows()` from the *dplyr* package to merge each pair of datasets into a single complete table for daily and hourly analyses.
+
+```{r merge_tables}
+daily_activity_all <- bind_rows(dailyActivity_A_to_M, dailyActivity_M_to_A)
+
+hourlyCalories_all <- bind_rows(hourlyCalories_A_to_M, hourlyCalories_M_to_A) %>% 
+  distinct(id, activity_hour, .keep_all = TRUE)
+
+hourlyIntensities_all <- bind_rows(hourlyIntensities_A_to_M, hourlyIntensities_M_to_A) %>% 
+  distinct(id, activity_hour, .keep_all = TRUE)
+
+hourlySteps_all <- bind_rows(hourlySteps_A_to_M, hourlySteps_M_to_A) %>% 
+  distinct(id, activity_hour, .keep_all = TRUE)
+
+```
+
+
+*All daily and hourly datasets have been successfully merged, resulting in four complete tables ready for further exploration and visualization.*
+
+### Join Hourly Tables
+
+Next, the three hourly datasets *Calories*, *Intensities*, and *Steps* are combined into one comprehensive table.  
+The `full_join()` function is used to merge the datasets by both `id` and `activity_hour`, ensuring no hourly records are lost across users.
+
+```{r join_hourly_tables}
+hourly_data <- hourlyCalories_all %>%
+  full_join(hourlyIntensities_all, by = c("id", "activity_hour")) %>%
+  full_join(hourlySteps_all,       by = c("id", "activity_hour"))
+```
+
+
+*All hourly datasets have been successfully joined, creating a single dataset (hourly_data) for time-based activity analysis.*
+
+### Extract datetime components
+
+To enable time-based analysis, additional components, hour, day of the week, and date, are extracted to support visualizations of activity trends by time of day and weekday patterns.
+
+```{r extract_datetime_components}
+hourly_data <- hourly_data %>%
+  mutate(
+    hour = hour(activity_hour),
+    day  = wday(activity_hour, label = TRUE),
+    date = as.Date(activity_hour)
+  )
+```
+
+
+*Datetime conversion and component extraction completed. The dataset now supports detailed temporal analysis, such as hourly and daily activity trends.*
+
+## Sleep Data Side Quest
+
+#### 1. Load minute-level sleep files and combine
+
+These are the two big Fitbit sleep CSVs and were handled on the desktop version of RStudio due to the fact that they exceeded the max file size for Posit Cloud to handle.
+
+```{r load_files, eval=FALSE}
+# - Read the two split sleep files
+sleep_data_AM <- read_csv("minuteSleep_merged_A_to_M.csv") %>% clean_names()
+sleep_data_MA <- read_csv("minuteSleep_merged_M_to_A.csv") %>%  clean_names()
+
+# Stack them into one table
+sleep_data_all <- bind_rows(sleep_data_AM, sleep_data_MA)
+```
+
+
+#### 2. Parse datetime and fix the "value" column
+- Fitbit minute sleep is usually 1 minute per row
+- some rows were recorded as 2 → force them to 1
+
+```{r merge_files, eval=FALSE}
+sleep_data_all <- sleep_data_all %>%
+  mutate(
+    date = mdy_hms(date),
+    value = if_else(value > 1, 1, value)
+  )
+```
+
+
+#### 3. Aggregate minute-level → nightly sleep per user
+I sum all the 1-minute rows per user per date
+
+```{r aggregate_minute_level, eval=FALSE}
+sleep_daily <- sleep_data_all %>%
+  mutate(sleep_date = as.Date(date)) %>%
+  group_by(id, sleep_date) %>%
+  summarise(
+    total_minutes_asleep = sum(value, na.rm = TRUE),
+    .groups = "drop"
+  )
+```
+
+
+#### 4. Filter out users with too few nights of sleep data
+I found a few with very few nights that skewed things
+here we keep users with >= 10 recorded nights
+
+```{r filter_bad_data, eval=FALSE}
+# Count nights per user
+sleep_counts <- sleep_daily %>%
+  count(id, name = "n_nights")
+
+# Keep only users with at least 10 nights
+valid_users <- sleep_counts %>%
+  filter(n_nights >= 10) %>%
+  pull(id)
+
+sleep_daily_filtered <- sleep_daily %>%
+  filter(id %in% valid_users)
+```
+
+
+#### 5. Compute average sleep per user (on the filtered data)
+
+```{r compute_avg_sleep_per_user, eval=FALSE}
+avg_sleep_per_user_filtered <- sleep_daily_filtered %>%
+  group_by(id) %>%
+  summarize(
+    avg_minutes_asleep = mean(total_minutes_asleep, na.rm = TRUE),
+    n_nights = n()
+  ) %>%
+  mutate(
+    avg_hours_asleep = round(avg_minutes_asleep / 60, 2)
+  ) %>%
+  arrange(desc(avg_minutes_asleep))
+```
+
+
+#### 6. Remove clearly bad sleep records
+2 users averaging < 2 hours/night → likely bad data
+
+```{r remove_bad_data, eval=FALSE}
+avg_sleep_per_user_filtered <- avg_sleep_per_user_filtered %>%
+  filter(avg_hours_asleep >= 2)
+```
+
+
+#### 7. Overall average sleep across the cleaned users
+
+```{r calculate_overall_average, eval=FALSE}
+overall_sleep_filtered <- avg_sleep_per_user_filtered %>%
+  summarize(
+    overall_avg_hours_asleep   = mean(avg_hours_asleep, na.rm = TRUE),
+    overall_avg_minutes_asleep = mean(avg_hours_asleep * 60, na.rm = TRUE)
+  )
+
+avg_sleep_minutes <- 427
+```
+
+
+### Q1: What hours of the day show highest activity?
+```{r hourly_activity_table}
+hourly_avg <- hourly_data %>%
+  group_by(hour) %>%
+  summarise(
+    avg_steps = mean(step_total, na.rm = TRUE),
+    avg_calories = mean(calories, na.rm = TRUE),
+    avg_intensity = mean(average_intensity, na.rm = TRUE)
+  )
+
+ggplot(hourly_avg, aes(x = hour, y = avg_steps)) +
+  geom_line(color = "#2C7BB6") +
+  geom_point(color = "#2C7BB6") +
+  labs(title = "Average Steps by Hour of Day",
+       x = "Hour (UTC)", y = "Average Steps") +
+  theme_minimal()
+```
+
+
+#### Summary & Market Insight
+
+Analysis of the hourly activity data reveals that users are most active between 10:00 and 19:00 UTC, with clear peaks in movement during the late morning and early evening hours. Activity drops sharply overnight, reaching its lowest levels between 12:00 AM and 5:00 AM UTC, which aligns with typical sleep and rest periods.
+
+This pattern suggests that most users follow a daytime activity rhythm centered around work hours and early evening exercise. For Bellabeat, these insights present an opportunity to strategically time user engagement and wellness messaging. For instance, Bellabeat could schedule push notifications or motivational prompts during late morning and mid-afternoon, times when activity naturally rises, to encourage sustained momentum. Similarly, evening wellness content, such as mindfulness or relaxation reminders, could align with users’ wind-down periods after their peak movement hours.
+
+By tailoring communications to these data-backed behavioral windows, Bellabeat can increase engagement, reinforce daily activity habits, and position its products as personalized companions that understand and adapt to each user’s natural rhythm.
+
+### Q2: Weekday vs Weekend activity
+```{r weekday_vs_weekend_plot}
+hourly_data <- hourly_data %>%
+  mutate(week_part = ifelse(day %in% c("Sat", "Sun"), "Weekend", "Weekday"))
+
+weekday_summary <- hourly_data %>%
+  group_by(week_part, hour) %>%
+  summarise(avg_steps = mean(step_total, na.rm = TRUE))
+
+ggplot(weekday_summary, aes(x = hour, y = avg_steps, color = week_part)) +
+  geom_line(size = 1.1) +
+  labs(title = "Hourly Activity: Weekday vs Weekend",
+       x = "Hour (UTC)", y = "Average Steps") +
+  theme_minimal()
+```
+
+
+#### Summary & Market Insight
+
+Comparing weekday and weekend activity patterns reveals that users maintain a similar daily rhythm but exhibit subtle differences in timing and intensity. Weekday activity peaks earlier, around mid-morning and late afternoon, likely reflecting commuting and work-related movement. Weekend activity starts later but reaches slightly higher peaks, suggesting users engage in longer, more flexible bouts of activity during leisure time.
+
+For Bellabeat, these behavioral trends present opportunities to tailor engagement around lifestyle routines. During the workweek, the brand could deliver motivational nudges or short “movement break” reminders mid-morning and mid-afternoon when activity naturally dips. On weekends, Bellabeat could shift messaging toward outdoor challenges, social wellness activities, or mindfulness content that aligns with users’ freer schedules. By aligning marketing touchpoints with when users are naturally most active, Bellabeat can increase engagement and reinforce its positioning as a personalized, lifestyle-aware wellness companion.
+
+### Q3: Relationship between intensity and calories
+```{r intensity_vs_calories_plot}
+correlation_value_calories_intensity <- cor(hourly_data$calories,
+                         hourly_data$total_intensity,
+                         use = "complete.obs")
+
+correlation_value_calories_intensity
+
+ggplot(hourly_data, aes(x = total_intensity, y = calories)) +
+  geom_point(alpha = 0.4, color = "#D7191C") +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  labs(title = "Relationship Between Intensity and Calories Burned",
+      subtitle = paste("Correlation coefficient (r) =", round(correlation_value_calories_intensity, 2)),
+       x = "Total Intensity", y = "Calories Burned") +
+  theme_minimal()
+```
+
+
+#### Summary & Market Insight
+
+The scatter plot illustrates a clear positive relationship between total activity intensity and calories burned. As the total intensity of users’ movements increases, calorie expenditure rises steadily, confirming that higher-effort activities directly contribute to greater energy output. Even moderate increases in intensity are associated with noticeable calorie gains, suggesting that users don’t need extreme workouts to achieve meaningful results.
+
+For Bellabeat, this insight reinforces the value of educating users on the impact of intensity within their daily routines. Marketing messages can emphasize that “every bit of effort counts” encouraging users to boost intensity through small changes like brisk walking or short bursts of activity. Bellabeat’s app could further engage users by translating intensity data into personalized energy insights (“You burned 20% more calories today by increasing your activity intensity!”), turning tracking data into motivational feedback that drives long-term habit formation.
+
+### Q4: Steps vs Average Intensity
+```{r intensity_vs_steps_plot}
+correlation_value_steps_intensity <- cor(hourly_data$step_total,
+                         hourly_data$average_intensity,
+                         use = "complete.obs")
+
+correlation_value_steps_intensity
+
+ggplot(hourly_data, aes(x = step_total, y = average_intensity)) +
+  geom_point(alpha = 0.3, color = "#FDAE61") +
+  geom_smooth(method = "lm", color = "black") +
+  labs(title = "Correlation Between Steps and Intensity",
+       subtitle = paste("Correlation coefficient (r) =", round(correlation_value_steps_intensity, 2)),
+       x = "Steps per Hour", y = "Average Intensity") +
+  theme_minimal()
+```
+
+
+#### Summary & Market Insight
+
+This analysis shows a strong positive correlation between steps and average activity intensity, indicating that as users take more steps per hour, their movement intensity rises almost proportionally. This suggests that most users’ physical activity is step-based, and that increased step volume is a reliable indicator of higher energy output and engagement.
+
+For Bellabeat, this connection underscores the importance of simplifying fitness tracking around daily movement goals. By emphasizing step-based metrics, Bellabeat can appeal to a broad audience of users who prefer accessible, everyday activity targets over complex intensity measures. Marketing efforts could spotlight “step streaks,” “daily movement goals,” and progress-based challenges to foster consistent engagement. Communicating that “every step increases your intensity and brings you closer to your wellness goals” reinforces the brand’s commitment to achievable, data-driven wellness.
+
+### Q5 Average Activity Level
+```{r average_activity_level_chart}
+# Overall average and median steps per day
+daily_activity_all %>%
+  summarise(
+    mean_steps = mean(total_steps, na.rm = TRUE),
+    median_steps = median(total_steps, na.rm = TRUE)
+  )
+
+# Distribution of daily steps across all users
+ggplot(daily_activity_all, aes(x = total_steps)) +
+  geom_histogram(fill = "#56B4E9", bins = 30, color = "white") +
+  geom_vline(xintercept = 10000, linetype = "dashed", color = "red") +
+  annotate("text", x = 10000, y = 20, label = "10,000-step goal", color = "red", hjust = -0.1) +
+  labs(
+    title = "Distribution of Daily Steps per User",
+    x = "Total Steps per Day",
+    y = "Count of Days"
+  ) +
+  theme_minimal()
+
+# Identify how many days users met or exceeded 10,000 steps
+daily_activity_all %>%
+  mutate(met_goal = ifelse(total_steps >= 10000, "Yes", "No")) %>%
+  summarise(
+    percent_met_goal = mean(met_goal == "Yes") * 100
+  )
+```
+
+
+#### Summary & Market Insight
+
+The analysis shows that users averaged approximately 7,281 steps per day, with a median of 6,999 steps, and approximately 30.8% of days meeting or exceeding the widely promoted 10,000-step goal. The distribution of daily steps is skewed toward lower activity levels, indicating that most users fall short of the benchmark traditionally associated with optimal daily movement.
+
+For Bellabeat, this finding highlights a key opportunity to reframe wellness expectations and encourage sustainable progress rather than strict adherence to the 10,000-step rule. Marketing messages could emphasize incremental improvement, for example, “Add 1,000 more steps today” to help users see progress as both attainable and rewarding. By incorporating adaptive goal-setting features in the Bellabeat app and celebrating smaller, personalized milestones, Bellabeat can better engage users who might otherwise disengage when falling short of rigid fitness targets. This data-driven approach aligns the brand with supportive, realistic wellness guidance that motivates long-term habit formation.
+
+### Q6: Proportion of sedentary vs active minutes per day
+```{r sedentary_vs_active_chart}
+avg_sleep_minutes <- 427  # from local sleep analysis (run in desktop R)
+
+activity_balance <- daily_activity_all %>%
+  mutate(
+    # Adjust sedentary minutes to remove estimated sleep time
+    sedentary_awake_minutes = sedentary_minutes - avg_sleep_minutes,
+    # Prevent negative values (in case some users record < 427 sedentary minutes)
+    sedentary_awake_minutes = ifelse(sedentary_awake_minutes < 0, 0, sedentary_awake_minutes),
+    
+    # Total minutes considered in the day
+    total_minutes_recorded = sedentary_awake_minutes +
+      lightly_active_minutes +
+      fairly_active_minutes +
+      very_active_minutes,
+    
+    # Calculate ratios
+    sedentary_ratio = sedentary_awake_minutes / total_minutes_recorded,
+    active_ratio = 1 - sedentary_ratio
+  )
+
+# ---- Summary of average proportions across all users ----
+activity_balance %>%
+  summarise(
+    avg_sedentary_ratio = mean(sedentary_ratio, na.rm = TRUE),
+    avg_active_ratio = mean(active_ratio, na.rm = TRUE)
+  )
+
+activity_composition <- daily_activity_all %>%
+  summarise(across(ends_with("_minutes"), function(x) mean(x, na.rm = TRUE))) %>%
+  pivot_longer(cols = everything(), names_to = "activity_type", values_to = "avg_minutes") %>%
+  mutate(
+    activity_type = str_replace(activity_type, "_minutes", ""),
+    activity_type = str_replace_all(activity_type, "_", " ") |> str_to_title(),
+    avg_minutes = ifelse(activity_type == "Sedentary", avg_minutes - avg_sleep_minutes, avg_minutes),
+    activity_type = ifelse(activity_type == "Sedentary", "Sedentary (Awake)", activity_type)
+  )
+
+activity_composition$avg_minutes[activity_composition$avg_minutes < 0] <- 0
+
+ggplot(activity_composition, aes(x = "", y = avg_minutes, fill = activity_type)) +
+  geom_bar(width = 1, stat = "identity") +
+  coord_polar("y") +
+  labs(
+    title = "Average Daily Time by Activity Level (Sleep Adjusted)",
+    fill = "Activity Type"
+  ) +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+
+#### Summary & Market Insight
+
+After adjusting for an average of 427 minutes of nightly sleep, the data shows that users spend approximately 67% of their waking hours sedentary and only 33% engaged in light, moderate, or high activity. The pie chart makes it clear that most users’ days are dominated by extended periods of inactivity, with light activity representing the majority of active time.
+
+This insight presents a strong opportunity for Bellabeat to position itself as a motivational wellness partner that helps users transform idle time into meaningful movement. Marketing efforts could focus on micro-activity challenges and move reminders, for example, encouraging users to stand, stretch, or walk briefly each hour. Additionally, Bellabeat could design personalized progress notifications highlighting how small, consistent bursts of light activity throughout the day contribute to better overall health. This data-driven approach reinforces Bellabeat’s mission of making wellness achievable through steady, everyday habits rather than intensive exercise routines.
+
+### Q7: Relationship between activity intensity and outcomes
+```{r activity_distance_vs_calories_plot}
+# ---- Find the total activity distance
+daily_activity_all <- daily_activity_all %>%
+  mutate(
+    total_active_distance = very_active_distance +
+                            moderately_active_distance +
+                            light_active_distance
+  )
+
+# Correlation between total active distance and calories burned
+correlation_value <- cor(daily_activity_all$total_active_distance,
+                         daily_activity_all$calories,
+                         use = "complete.obs")
+
+correlation_value
+
+# ---- Visualize the relationship
+ggplot(daily_activity_all, aes(x = total_active_distance, y = calories)) +
+  geom_point(alpha = 0.5, color = "#0072B2") +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  labs(
+    title = "Calories Burned vs. Total Active Distance",
+    subtitle = paste("Correlation coefficient (r) =", round(correlation_value, 2)),
+    x = "Total Active Distance (miles)",
+    y = "Calories Burned"
+  ) +
+  theme_minimal()
+```
+
+
+#### Summary & Market Insight
+
+The analysis reveals a moderate positive correlation (r = 0.60) between total active distance and calories burned, indicating that users who move farther, regardless of whether that movement is light, moderate, or vigorous, consistently expend more energy. This demonstrates that total movement, not just high-intensity workouts, contributes meaningfully to overall health outcomes.
+
+For Bellabeat, this insight reinforces the value of promoting holistic, sustainable activity as part of a balanced lifestyle. Marketing campaigns could focus on the message that “every movement matters”, encouraging users to integrate small, consistent actions like walking meetings, short breaks, or household movement into their daily routines. Within the Bellabeat app, visual feedback on “total active distance” and its direct impact on calorie burn could help users connect effort to reward, strengthening engagement and perceived value. By highlighting attainable progress rather than perfection, Bellabeat can position itself as a brand that supports real-world wellness rather than rigid fitness expectations.
+
+
+## Final Summary: Insights & Marketing Recommendations for Bellabeat  
+
+### Overview  
+Through an in-depth analysis of Fitbit user activity and sleep data, this case study explored how patterns in daily movement, intensity, and rest can inform **Bellabeat’s product strategy and marketing decisions**.  
+The results highlight opportunities for Bellabeat to promote **accessible, data-driven wellness**, encouraging gradual improvement, balance, and consistency, which aligns perfectly with Bellabeat’s holistic brand philosophy.  
+
+
+### Data Limitations  
+
+While this analysis provides meaningful insights into general activity and sleep behaviors, several limitations should be acknowledged before interpreting the results:  
+
+1. **Non-Bellabeat Data Source**  
+   - The Fitbit dataset used for this case study is publicly available and does not include Bellabeat users.  
+   - As a result, the observed activity and sleep patterns may not directly reflect Bellabeat’s customer base or target demographics.  
+
+2. **Small and Unbalanced Sample Size**  
+   - The dataset includes only about **30 participants**, limiting statistical power and representativeness.  
+   - Not all participants consistently recorded all metrics (e.g., some users tracked activity but not sleep), introducing potential bias.  
+
+3. **Limited Timeframe**  
+   - The data spans roughly **March through May 2016**, covering only two months of user behavior.  
+   - Short-term data may not capture seasonal variation or long-term behavioral patterns.  
+
+4. **Device Accuracy and Data Quality**  
+   - Data were collected using consumer-grade Fitbit devices, which may have inaccuracies in step counts, intensity, and sleep tracking.  
+   - Missing or incomplete data (e.g., device non-wear periods) could lead to underreported activity levels.  
+
+5. **Lack of Demographic Information**  
+   - The dataset does not include demographic variables such as age, gender, or lifestyle characteristics.  
+   - Without these attributes, the analysis cannot segment results or assess behavioral differences across user groups.  
+
+
+These limitations mean the findings should be interpreted as **exploratory and directional**, not definitive.  
+Despite these constraints, the patterns identified offer valuable **hypotheses and strategic guidance** for Bellabeat, particularly around engagement timing, activity motivation, and wellness behavior trends.  
+Future analyses using **Bellabeat’s proprietary user data** would allow for deeper segmentation and more representative conclusions.
+
+### Data Source
+
+The data used in this analysis was sourced from the publicly available [Fitbit Fitness Tracker Data](https://www.kaggle.com/datasets/arashnic/fitbit/discussion/614417#331)
+
+This dataset contains anonymized Fitbit activity, sleep, and heart rate information for 30 users collected during March–May 2016.
+
+### Key Insights  
+
+#### 1 Daily Activity Patterns  
+Users are most active between **10:00 and 19:00 UTC**, showing movement peaks around morning and evening routines.  
+➡ *Opportunity:* Schedule **smart reminders or motivational nudges** during midday inactivity to keep engagement high.
+
+#### 2 Weekday vs. Weekend Behavior  
+Activity levels remain fairly consistent, with a slight midday increase on weekends.  
+➡ *Opportunity:* Launch **weekend wellness campaigns** or “Active Saturday” challenges when users have more free time.
+
+#### 3 Steps and Intensity Correlation  
+A strong relationship between **steps per hour** and **average intensity** confirms that step count remains a simple yet powerful indicator of activity.  
+➡ *Marketing Message:* Emphasize “**Every Step Counts**” to reinforce progress-based wellness.
+
+#### 4 Average Activity Levels  
+The average user takes **~7,200 steps/day**, and only **30.8% meet the 10,000-step goal**.  
+➡ *Opportunity:* Reframe the standard fitness benchmark by promoting **incremental growth** e.g., “Add 1,000 more steps today.”
+
+#### 5 Sedentary vs. Active Time  
+After subtracting sleep, users spend **~67% of their waking hours sedentary** and only **33% active**.  
+➡ *Opportunity:* Develop **micro-activity challenges** (e.g., hourly move reminders, short walks, or stand-up streaks) to reduce sedentary time.
+
+#### 6 Relationship Between Activity and Calories  
+A **moderate positive correlation (r ≈ 0.6)** between *total active distance* and *calories burned* confirms that **all levels of activity contribute meaningfully to energy expenditure**.  
+➡ *Marketing Message:* “*Total movement matters**: consistent, everyday motion leads to measurable health benefits.
+
+---
+
+### Strategic Marketing Recommendations  
+
+1. **Reframe Success Metrics**  
+   - Shift focus from rigid targets to progress-based milestones (weekly averages, streaks, or growth percentages).
+
+2. **Personalized Motivation**  
+   - Use Bellabeat’s app data to send real-time **activity nudges** during low-movement periods.
+
+3. **Promote Balance, Not Burnout**  
+   - Emphasize connections between **sleep quality**, **stress reduction**, and **light daily activity**.
+
+4. **Gamify Healthy Habits**  
+   - Introduce micro-challenges such as *“Move for 5”* or *“Lunchtime Loops”* to keep users engaged without overwhelming them.
+
+5. **Storytelling and Education**  
+   - Highlight user stories that demonstrate how **small actions add up**, creating emotional resonance and trust.
+
+---
+
+### Conclusion  
+This analysis reinforces that most users engage in **moderate, everyday movement** rather than high-intensity workouts which is perfectly aligned with Bellabeat’s mission of *mindful, attainable wellness*.  
+
+By transforming these insights into **personalized guidance and gentle motivation**, Bellabeat can strengthen user engagement while helping women see progress as a collection of **small, consistent victories**.  
+
+Bellabeat’s greatest opportunity lies in making **wellness feel achievable**, showing that meaningful change grows from the rhythm of daily life, one mindful step at a time. 
