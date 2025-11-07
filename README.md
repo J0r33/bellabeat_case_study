@@ -10,6 +10,11 @@ This repository contains my analyses of the Bellabeat fitness tracker dataset:
 
 > The notebook version mirrors the Google DA process (Ask → Prepare → Process → Analyze → Share → Act) but executes the *Process* and *Analyze* steps with SQL instead of R. It includes joins across activity, sleep, and hourly tables; date/time parsing; creation of analysis views (e.g. hourly patterns, weekday vs weekend); and queries that lead directly to marketing insights.
 
+## Project Files
+
+All `.csv` files necessary to run the code are available in the **`project_files` branch** of this repository.  
+You can clone or download that branch to access the raw Fitbit data used in this analysis.
+
 ---
 
 ## Presentation
