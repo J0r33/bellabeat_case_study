@@ -226,7 +226,7 @@ hourly_data <- hourly_data %>%
 
 These are the two big Fitbit sleep CSVs and were handled on the desktop version of RStudio due to the fact that they exceeded the max file size for Posit Cloud to handle.
 
-```{r load_files, eval=FALSE}
+```{r load_files}
 # - Read the two split sleep files
 sleep_data_AM <- read_csv("minuteSleep_merged_A_to_M.csv") %>% clean_names()
 sleep_data_MA <- read_csv("minuteSleep_merged_M_to_A.csv") %>%  clean_names()
@@ -240,7 +240,7 @@ sleep_data_all <- bind_rows(sleep_data_AM, sleep_data_MA)
 - Fitbit minute sleep is usually 1 minute per row
 - some rows were recorded as 2 → force them to 1
 
-```{r merge_files, eval=FALSE}
+```{r merge_files}
 sleep_data_all <- sleep_data_all %>%
   mutate(
     date = mdy_hms(date),
@@ -252,7 +252,7 @@ sleep_data_all <- sleep_data_all %>%
 #### 3. Aggregate minute-level → nightly sleep per user
 I sum all the 1-minute rows per user per date
 
-```{r aggregate_minute_level, eval=FALSE}
+```{r aggregate_minute_level}
 sleep_daily <- sleep_data_all %>%
   mutate(sleep_date = as.Date(date)) %>%
   group_by(id, sleep_date) %>%
@@ -267,7 +267,7 @@ sleep_daily <- sleep_data_all %>%
 I found a few with very few nights that skewed things
 here we keep users with >= 10 recorded nights
 
-```{r filter_bad_data, eval=FALSE}
+```{r filter_bad_data}
 # Count nights per user
 sleep_counts <- sleep_daily %>%
   count(id, name = "n_nights")
@@ -284,7 +284,7 @@ sleep_daily_filtered <- sleep_daily %>%
 
 #### 5. Compute average sleep per user (on the filtered data)
 
-```{r compute_avg_sleep_per_user, eval=FALSE}
+```{r compute_avg_sleep_per_user}
 avg_sleep_per_user_filtered <- sleep_daily_filtered %>%
   group_by(id) %>%
   summarize(
@@ -301,7 +301,7 @@ avg_sleep_per_user_filtered <- sleep_daily_filtered %>%
 #### 6. Remove clearly bad sleep records
 2 users averaging < 2 hours/night → likely bad data
 
-```{r remove_bad_data, eval=FALSE}
+```{r remove_bad_data}
 avg_sleep_per_user_filtered <- avg_sleep_per_user_filtered %>%
   filter(avg_hours_asleep >= 2)
 ```
@@ -309,7 +309,7 @@ avg_sleep_per_user_filtered <- avg_sleep_per_user_filtered %>%
 
 #### 7. Overall average sleep across the cleaned users
 
-```{r calculate_overall_average, eval=FALSE}
+```{r calculate_overall_average}
 overall_sleep_filtered <- avg_sleep_per_user_filtered %>%
   summarize(
     overall_avg_hours_asleep   = mean(avg_hours_asleep, na.rm = TRUE),
